@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>野生動物營養灌食計算機</title>
+    <style>
+        :root { --primary-color: #2c3e50; --accent-color: #27ae60; --bg-color: #f4f7f6; }
+        body { font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; background-color: var(--bg-color); padding: 20px; color: #333; line-height: 1.6; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 550px; margin: auto; }
+        h2 { text-align: center; color: var(--primary-color); margin-top: 0; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px; }
+        .input-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 0.95em; color: #444; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+        .result-box { margin-top: 20px; background: #ebf5ee; padding: 15px; border-radius: 8px; border: 1px solid #d4e8da; }
+        .result-row { display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #c8e0d0; }
+        .result-row:last-child { border-bottom: none; }
+        .val { font-weight: bold; color: #2c3e50; }
+        .highlight { color: #d35400; font-size: 1.1em; }
+        .footer { text-align: center; font-size: 11px; color: #888; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>物種營養灌食計算機</h2>
+    
+    <div class="input-group">
+        <label>物種別</label>
+        <select id="species" onchange="calculate()"></select>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <div class="input-group" style="flex: 1;">
+            <label>灌食量 (BW%)</label>
+            <select id="bw" onchange="calculate()">
+                <option value="0.01">1.0%</option>
+                <option value="0.015">1.5%</option>
+                <option value="0.02" selected>2.0%</option>
+                <option value="0.03">3.0%</option>
+                <option value="0.033">3.3%</option>
+            </select>
+        </div>
+        <div class="input-group" style="flex: 1;">
+            <label>脫水狀況</label>
+            <select id="dehydration" onchange="calculate()">
+                <option value="0">0%</option>
+                <option value="0.05">5%</option>
+                <option value="0.08">8%</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <label>入院體重 (g)</label>
+        <input type="number" id="weight" placeholder="請輸入體重" oninput="calculate()">
+    </div>
+
+    <div class="result-box">
+        <div class="result-row">
+            <span>灌食量 (ml)</span>
+            <span id="res_feeding" class="val">0.0</span>
+        </div>
+        <div class="result-row">
+            <span>調配量 (ml) (x1.2)</span>
+            <span id="res_prep" class="val">0.0</span>
+        </div>
+        <div class="result-row">
+            <span id="f1_label">配方一</span>
+            <span id="res_f1" class="val">0.00</span>
+        </div>
+        <div class="result-row" id="f2_row" style="display:none;">
+            <span id="f2_label">配方二</span>
+            <span id="res_f2" class="val">0.00</span>
+        </div>
+        <div class="result-row">
+            <span>水添加量 (ml)</span>
+            <span id="res_water" class="val">0.00</span>
+        </div>
+        <div class="result-row">
+            <span><strong>魚油添加 (ml)</strong></span>
+            <span id="res_oil" class="val highlight">0.00</span>
+        </div>
+    </div>
+    
+    <div class="footer">數據來源：艾茉芮官方參考資料</div>
+</div>
+
+<script>
+// 從圖片提取的完整數據
+const data = [
+    { s: "猛禽", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "魚鷹 (可用水禽)", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "水禽、涉禽", f1: "魚食", f1v: 1, f2: "", f2v: 0, w: 2, oil: 0.0138889 },
+    { s: "水禽、涉禽 (嚴重脫水)", f1: "魚食", f1v: 1, f2: "", f2v: 0, w: 4, oil: 0.0138889 },
+    { s: "鷺鷥、鸕鶿、鸊鷉", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "紅冠水雞、白腹秧雞", f1: "肉食", f1v: 1, f2: "雜食", f2v: 9, w: 8 },
+    { s: "綠頭鴨、翅膀鴨、白冠雞", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "鵝", f1: "雜食", f1v: 3, f2: "草食(加護)", f2v: 2, w: 4 },
+    { s: "鵝 (幼雛)", f1: "雜食", f1v: 9, f2: "草食(加護)", f2v: 2, w: 8 },
+    { s: "鷗", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "雞形目", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "雞形目 (幼雛)", f1: "雜食", f1v: 9, f2: "肉食", f2v: 1, w: 8 },
+    { s: "麻雀", f1: "雜食", f1v: 9, f2: "肉食", f2v: 1, w: 8 },
+    { s: "鶇", f1: "雜食", f1v: 3, f2: "肉食", f2v: 1, w: 4 },
+    { s: "鶯", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "啄木鳥", f1: "雜食", f1v: 3, f2: "肉食", f2v: 1, w: 4 },
+    { s: "烏鴉", f1: "雜食", f1v: 9, f2: "肉食", f2v: 1, w: 8 },
+    { s: "鳩鴿", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "燕雀", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "中華鱉", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "斑龜", f1: "雜食", f1v: 3, f2: "草食(加護)", f2v: 2, w: 4 },
+    { s: "食蛇龜", f1: "雜食", f1v: 3, f2: "肉食", f2v: 3, w: 8 },
+    { s: "柴棺龜", f1: "雜食", f1v: 3, f2: "肉食", f2v: 3, w: 8 },
+    { s: "山羌、長鬃山羊 (加護)", f1: "草食加護", f1v: 1, f2: "", f2v: 0, w: 1 },
+    { s: "山羌、長鬃山羊 (恢復)", f1: "草食恢復", f1v: 1, f2: "", f2v: 0, w: 1 },
+    { s: "臺灣獼猴", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "赤腹松鼠", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "白面鼯鼠、大赤鼯鼠", f1: "雜食", f1v: 3, f2: "", f2v: 0, w: 2 },
+    { s: "食肉目", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 },
+    { s: "全食蟲鳥(燕、雨燕)", f1: "肉食", f1v: 1, f2: "", f2v: 0, w: 2 }
+];
+
+// 初始化選單
+const select = document.getElementById('species');
+data.forEach((item, idx) => {
+    let opt = document.createElement('option');
+    opt.value = idx;
+    opt.innerText = item.s;
+    select.appendChild(opt);
+});
+
+function calculate() {
+    const weight = parseFloat(document.getElementById('weight').value) || 0;
+    const bw = parseFloat(document.getElementById('bw').value);
+    const dehydration = parseFloat(document.getElementById('dehydration').value);
+    const item = data[document.getElementById('species').value];
+
+    // 1. 灌食量 (ml)
+    const feedingVol = Math.round((weight * (1 + dehydration) * bw) * 10) / 10;
+    document.getElementById('res_feeding').innerText = feedingVol.toFixed(1);
+
+    // 2. 調配量 (ml)
+    const prepVol = feedingVol * 1.2;
+    document.getElementById('res_prep').innerText = prepVol.toFixed(1);
+
+    // 3. 配方量與水
+    const f1_add = (prepVol / item.w) * item.f1v;
+    const f2_add = (prepVol / item.w) * item.f2v;
+    
+    document.getElementById('f1_label').innerText = item.f1 + " 艾茉芮 (份數:" + item.f1v + ")";
+    document.getElementById('res_f1').innerText = f1_add.toFixed(2);
+
+    if (item.f2v > 0) {
+        document.getElementById('f2_row').style.display = 'flex';
+        document.getElementById('f2_label').innerText = item.f2 + " 艾茉芮 (份數:" + item.f2v + ")";
+        document.getElementById('res_f2').innerText = f2_add.toFixed(2);
+    } else {
+        document.getElementById('f2_row').style.display = 'none';
+    }
+
+    document.getElementById('res_water').innerText = prepVol.toFixed(2);
+
+    // 4. 魚油計算
+    let oil_add = 0;
+    if (item.oil) {
+        oil_add = prepVol * item.oil; // 若有每cc添加量
+    } else {
+        oil_add = (f1_add / 45) * 1.25; // 原始公式
+    }
+    document.getElementById('res_oil').innerText = oil_add.toFixed(2);
+}
+</script>
+</body>
+</html>
